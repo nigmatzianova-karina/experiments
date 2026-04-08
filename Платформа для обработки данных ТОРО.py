@@ -40,7 +40,7 @@ def display_as_tree(data, indent=0):
 
 # --- 1. Вкладка "Иерархия оборудования" ---
 hierarchy_uploader = widgets.FileUpload(
-    accept='.txt, .json, .csv', # Расширяем принимаемые типы файлов
+    accept='.txt, .json, .csv, .xlsx', # Расширяем принимаемые типы файлов
     multiple=False,
     description='Загрузить иерархию оборудования'
 )
@@ -57,21 +57,36 @@ def on_hierarchy_analyze_button_clicked(b):
         uploaded_file = list(hierarchy_uploader.value.values())[0]
         file_name = uploaded_file['metadata']['name']
         file_content_bytes = uploaded_file['content']
+        file_extension = os.path.splitext(file_name)[1].lower()
+
+        file_content_for_gemini = "" # This will hold the string content for Gemini
 
         try:
-            file_content = file_content_bytes.decode('utf-8')
-            print(f"Файл '{file_name}' загружен.")
+            if file_extension == '.xlsx':
+                print(f"Обработка Excel файла '{file_name}'...")
+                df = pd.read_excel(io.BytesIO(file_content_bytes))
+                # Convert DataFrame to a JSON string for Gemini to process
+                file_content_for_gemini = df.to_json(orient='records', force_ascii=False, indent=2)
+                print("Excel файл успешно прочитан и преобразован в JSON-строку для анализа.")
+            elif file_extension in ['.txt', '.json', '.csv']:
+                print(f"Обработка текстового файла '{file_name}'...")
+                file_content_for_gemini = file_content_bytes.decode('utf-8')
+                print(f"Файл '{file_name}' загружен.")
+            else:
+                print(f"Ошибка: Неподдерживаемый тип файла '{file_extension}'. Поддерживаются .txt, .json, .csv, .xlsx.")
+                return
 
             # Адаптация промпта Gemini для более общей иерархии
-            # Вы можете изменить этот промпт для каждого типа данных
+            # Промпт теперь должен быть более гибким, чтобы принимать как чистый текст, так и JSON-строку
             gemini_prompt_hierarchy = f"""
-            Проанализируй следующий текст, который описывает иерархию оборудования. 
-            Извлеки все уровни иерархии, включая родительские-дочерние отношения, 
+            Проанализируй следующий текст/JSON-данные, которые описывают иерархию оборудования.
+            Информация может быть представлена как свободный текст или как JSON-строка, представляющая табличные данные.
+            Извлеки все уровни иерархии, включая родительские-дочерние отношения,
             атрибуты каждого элемента (например, модель, класс, подкласс, производитель и т.д.).
-            Представь извлеченную информацию в формате JSON, где каждый элемент иерархии 
+            Представь извлеченную информацию в формате JSON, где каждый элемент иерархии
             является объектом с его атрибутами и, возможно, вложенным списком дочерних элементов.
-            Если информация отсутствует, укажите null. 
-            Если текст представляет собой плоский список, преобразовать его в иерархию, если это возможно, 
+            Если информация отсутствует, укажите null.
+            Если текст представляет собой плоский список или табличные данные, преобразовать его в иерархию, если это возможно,
             основываясь на логике отношений. Например:
             {{
               "оборудование": [
@@ -96,19 +111,15 @@ def on_hierarchy_analyze_button_clicked(b):
                 }}
               ]
             }}
-            
-            Текст для анализа:
+
+            Текст/Данные для анализа:
             ---
-            {file_content}
+            {file_content_for_gemini}
             ---
             """
 
-            # Временное изменение prompt для analyze_with_gemini, если это возможно,
-            # или создание новой специализированной функции
-            # Для простоты, пока будем использовать analyze_with_gemini с текущим промптом
-            # и ожидать, что пользователь адаптирует prompt в первой ячейке или создаст новую функцию.
-            # TODO: Для более сложных сценариев, рассмотреть создание `analyze_hierarchy_with_gemini`
-            extracted_data = analyze_with_gemini(file_content)
+            # Используем analyze_with_gemini с адаптированным промптом и подготовленным содержимым
+            extracted_data = analyze_with_gemini(gemini_prompt_hierarchy)
 
             if extracted_data:
                 print("\n--- Результаты анализа (Таблица) ---")
@@ -118,7 +129,12 @@ def on_hierarchy_analyze_button_clicked(b):
                     if isinstance(extracted_data, list):
                         df = pd.DataFrame(extracted_data)
                     elif isinstance(extracted_data, dict):
-                        df = pd.DataFrame([extracted_data])
+                        # If the top level is a dict and contains a list under a key like 'оборудование'
+                        # or 'equipment', try to flatten it for DataFrame
+                        if 'оборудование' in extracted_data and isinstance(extracted_data['оборудование'], list):
+                            df = pd.json_normalize(extracted_data['оборудование'])
+                        else:
+                            df = pd.DataFrame([extracted_data])
                     else:
                         df = pd.DataFrame({'Data': [str(extracted_data)]})
                     display(df)
@@ -133,12 +149,16 @@ def on_hierarchy_analyze_button_clicked(b):
                 # --- Функции сохранения ---
                 print("\n--- Опции сохранения ---")
                 json_output = json.dumps(extracted_data, ensure_ascii=False, indent=2)
-                
+
                 csv_buffer = io.StringIO()
-                # Для вложенных данных pandas to_csv может быть сложным, 
+                # Для вложенных данных pandas to_csv может быть сложным,
                 # потребуется "разворачивать" JSON перед сохранением в CSV
                 try:
-                    if 'df' in locals(): # Если DataFrame был успешно создан
+                    if 'df' in locals() and not df.empty: # Если DataFrame был успешно создан и не пуст
+                        # Flatten complex columns for CSV if necessary, or keep as JSON string
+                        for col in df.columns:
+                            if df[col].apply(lambda x: isinstance(x, (dict, list))).any():
+                                df[col] = df[col].apply(lambda x: json.dumps(x, ensure_ascii=False) if isinstance(x, (dict, list)) else x)
                         df.to_csv(csv_buffer, index=False, encoding='utf-8')
                     else: # Если DataFrame не удалось создать, сохраним raw JSON как одну строку
                         csv_buffer.write(json_output)
@@ -149,6 +169,7 @@ def on_hierarchy_analyze_button_clicked(b):
                     csv_buffer.write(json_output)
                     csv_output = csv_buffer.getvalue()
 
+                # Ensure json_output is a string that can be safely embedded or passed
                 json_download_link = f'<a href="data:application/json;charset=utf-8,{json.dumps(json_output)}" download="hierarchy_data.json">Скачать JSON</a>'
                 csv_download_link = f'<a href="data:text/csv;charset=utf-8,{csv_output}" download="hierarchy_data.csv">Скачать CSV</a>'
 
@@ -157,8 +178,12 @@ def on_hierarchy_analyze_button_clicked(b):
 
             else:
                 print("Не удалось извлечь данные из файла с помощью Gemini. Проверьте содержимое файла и промпт.")
+        except pd.errors.EmptyDataError:
+            print(f"Ошибка: Файл '{file_name}' пуст или не содержит данных.")
+        except pd.errors.ParserError as pe:
+            print(f"Ошибка парсинга Excel файла '{file_name}': {pe}. Убедитесь, что файл имеет корректный формат.")
         except UnicodeDecodeError:
-            print(f"Ошибка: Не удалось декодировать файл '{file_name}' как UTF-8. Попробуйте другую кодировку или убедитесь, что файл текстовый.")
+            print(f"Ошибка: Не удалось декодировать текстовый файл '{file_name}' как UTF-8. Попробуйте другую кодировку или убедитесь, что файл текстовый.")
         except Exception as e:
             print(f"Произошла ошибка при обработке файла иерархии: {e}")
 
@@ -166,7 +191,7 @@ hierarchy_analyze_button.on_click(on_hierarchy_analyze_button_clicked)
 
 # --- 2. Вкладка "Правила нормализации НСИ" ---
 norm_rules_uploader = widgets.FileUpload(
-    accept='.txt, .json, .csv', 
+    accept='.txt, .json, .csv, .xlsx',
     multiple=False,
     description='Загрузить правила нормализации НСИ'
 )
@@ -183,22 +208,29 @@ def on_norm_rules_display_button_clicked(b):
         uploaded_file = list(norm_rules_uploader.value.values())[0]
         file_name = uploaded_file['metadata']['name']
         file_content_bytes = uploaded_file['content']
-        
+        file_extension = os.path.splitext(file_name)[1].lower()
+
         try:
-            file_content = file_content_bytes.decode('utf-8')
-            print(f"Файл '{file_name}' загружен.")
-            print("\n--- Содержимое файла правил нормализации НСИ ---")
-            print(file_content) # Просто отображаем содержимое
+            if file_extension == '.xlsx':
+                print(f"Обработка Excel файла '{file_name}'...")
+                df = pd.read_excel(io.BytesIO(file_content_bytes))
+                print("\n--- Содержимое файла правил нормализации НСИ (первые 5 строк) ---")
+                display(df.head())
+            elif file_extension in ['.txt', '.json', '.csv']:
+                file_content = file_content_bytes.decode('utf-8')
+                print(f"Файл '{file_name}' загружен.")
+                print("\n--- Содержимое файла правил нормализации НСИ ---")
+                print(file_content)
+            else:
+                print(f"Ошибка: Неподдерживаемый тип файла '{file_extension}'. Поддерживаются .txt, .json, .csv, .xlsx.")
+                return
 
-            # TODO: Здесь можно добавить парсинг и структурированное отображение правил
-            # Например, если правила в JSON, можно их распарсить и отобразить как DataFrame
-
-            # Кнопка для ручной корректировки (Placeholder)
-            # manual_edit_button = widgets.Button(description='Ручная корректировка правил')
-            # display(manual_edit_button)
-
+        except pd.errors.EmptyDataError:
+            print(f"Ошибка: Файл '{file_name}' пуст или не содержит данных.")
+        except pd.errors.ParserError as pe:
+            print(f"Ошибка парсинга Excel файла '{file_name}': {pe}. Убедитесь, что файл имеет корректный формат.")
         except UnicodeDecodeError:
-            print(f"Ошибка: Не удалось декодировать файл '{file_name}' как UTF-8.")
+            print(f"Ошибка: Не удалось декодировать текстовый файл '{file_name}' как UTF-8.")
         except Exception as e:
             print(f"Произошла ошибка при обработке файла правил нормализации: {e}")
 
@@ -207,7 +239,7 @@ norm_rules_display_button.on_click(on_norm_rules_display_button_clicked)
 
 # --- 3. Вкладка "Классификатор оборудования" ---
 classifier_uploader = widgets.FileUpload(
-    accept='.txt, .json, .csv', 
+    accept='.txt, .json, .csv, .xlsx',
     multiple=False,
     description='Загрузить классификатор оборудования'
 )
@@ -224,17 +256,29 @@ def on_classifier_display_button_clicked(b):
         uploaded_file = list(classifier_uploader.value.values())[0]
         file_name = uploaded_file['metadata']['name']
         file_content_bytes = uploaded_file['content']
+        file_extension = os.path.splitext(file_name)[1].lower()
 
         try:
-            file_content = file_content_bytes.decode('utf-8')
-            print(f"Файл '{file_name}' загружен.")
-            print("\n--- Содержимое файла классификатора оборудования ---")
-            print(file_content) # Просто отображаем содержимое
+            if file_extension == '.xlsx':
+                print(f"Обработка Excel файла '{file_name}'...")
+                df = pd.read_excel(io.BytesIO(file_content_bytes))
+                print("\n--- Содержимое файла классификатора оборудования (первые 5 строк) ---")
+                display(df.head())
+            elif file_extension in ['.txt', '.json', '.csv']:
+                file_content = file_content_bytes.decode('utf-8')
+                print(f"Файл '{file_name}' загружен.")
+                print("\n--- Содержимое файла классификатора оборудования ---")
+                print(file_content)
+            else:
+                print(f"Ошибка: Неподдерживаемый тип файла '{file_extension}'. Поддерживаются .txt, .json, .csv, .xlsx.")
+                return
 
-            # TODO: Здесь можно добавить парсинг и структурированное отображение классификатора
-
+        except pd.errors.EmptyDataError:
+            print(f"Ошибка: Файл '{file_name}' пуст или не содержит данных.")
+        except pd.errors.ParserError as pe:
+            print(f"Ошибка парсинга Excel файла '{file_name}': {pe}. Убедитесь, что файл имеет корректный формат.")
         except UnicodeDecodeError:
-            print(f"Ошибка: Не удалось декодировать файл '{file_name}' как UTF-8.")
+            print(f"Ошибка: Не удалось декодировать текстовый файл '{file_name}' как UTF-8.")
         except Exception as e:
             print(f"Произошла ошибка при обработке файла классификатора: {e}")
 
