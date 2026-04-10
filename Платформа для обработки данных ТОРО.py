@@ -7,15 +7,15 @@ import os
 
 # --- Проверка наличия функций из первой ячейки ---
 # Убедитесь, что cell_id: 7rCxzD0goc0W был выполнен.
-# Если 'read_input_file' или 'analyze_with_gemini' не определены, вы получите ошибку.
 
 if 'read_input_file' not in globals():
     print("Ошибка: Функция 'read_input_file' не найдена. Пожалуйста, выполните ячейку с ID 7rCxzD0goc0W сначала.")
     raise SystemExit("Прервано: Необходимые функции не определены.")
 
-if 'analyze_with_gemini' not in globals():
-    print("Ошибка: Функция 'analyze_with_gemini' не найдена. Пожалуйста, выполните ячейку с ID 7rCxzD0goc0W сначала.")
-    raise SystemExit("Прервано: Необходимые функции не определены.")
+# Проверка наличия клиента LLM и функции анализа
+if 'client' not in globals() or 'analyze_content' not in globals() or 'current_llm_model' not in globals():
+    print("Ошибка: LLM клиент ('client'), функция 'analyze_content' или 'current_llm_model' не найдены. Пожалуйста, выполните ячейку с ID 7rCxzD0goc0W сначала.")
+    raise SystemExit("Прервано: Необходимые функции LLM не определены.")
 
 # --- Вспомогательная функция для отображения данных в виде дерева (простое текстовое представление) ---
 def display_as_tree(data, indent=0):
@@ -59,67 +59,29 @@ def on_hierarchy_analyze_button_clicked(b):
         file_content_bytes = uploaded_file['content']
         file_extension = os.path.splitext(file_name)[1].lower()
 
-        file_content_for_gemini = "" # This will hold the string content for Gemini
+        file_content_for_llm = "" # This will hold the string content for LLM
 
         try:
             if file_extension == '.xlsx':
                 print(f"Обработка Excel файла '{file_name}'...")
                 df = pd.read_excel(io.BytesIO(file_content_bytes))
-                # Convert DataFrame to a JSON string for Gemini to process
-                file_content_for_gemini = df.to_json(orient='records', force_ascii=False, indent=2)
+                # Convert DataFrame to a JSON string for LLM to process
+                file_content_for_llm = df.to_json(orient='records', force_ascii=False, indent=2)
                 print("Excel файл успешно прочитан и преобразован в JSON-строку для анализа.")
             elif file_extension in ['.txt', '.json', '.csv']:
                 print(f"Обработка текстового файла '{file_name}'...")
-                file_content_for_gemini = file_content_bytes.decode('utf-8')
+                file_content_for_llm = file_content_bytes.decode('utf-8')
                 print(f"Файл '{file_name}' загружен.")
             else:
                 print(f"Ошибка: Неподдерживаемый тип файла '{file_extension}'. Поддерживаются .txt, .json, .csv, .xlsx.")
                 return
 
-            # Адаптация промпта Gemini для более общей иерархии
+            # Адаптация промпта для более общей иерархии
             # Промпт теперь должен быть более гибким, чтобы принимать как чистый текст, так и JSON-строку
-            gemini_prompt_hierarchy = f"""
-            Проанализируй следующий текст/JSON-данные, которые описывают иерархию оборудования.
-            Информация может быть представлена как свободный текст или как JSON-строка, представляющая табличные данные.
-            Извлеки все уровни иерархии, включая родительские-дочерние отношения,
-            атрибуты каждого элемента (например, модель, класс, подкласс, производитель и т.д.).
-            Представь извлеченную информацию в формате JSON, где каждый элемент иерархии
-            является объектом с его атрибутами и, возможно, вложенным списком дочерних элементов.
-            Если информация отсутствует, укажите null.
-            Если текст представляет собой плоский список или табличные данные, преобразовать его в иерархию, если это возможно,
-            основываясь на логике отношений. Например:
-            {{
-              "оборудование": [
-                {{
-                  "название": "Машина А",
-                  "тип": "Производственная",
-                  "компоненты": [
-                    {{
-                      "название": "Двигатель 1",
-                      "модель": "XYZ-100",
-                      "класс": "Механизм"
-                    }},
-                    {{
-                      "название": "Панель управления",
-                      "класс": "Электроника"
-                    }}
-                  ]
-                }},
-                {{
-                  "название": "Машина Б",
-                  "тип": "Упаковочная"
-                }}
-              ]
-            }}
+            # analyze_content функция ожидает только текстовое содержимое, промпт формируется внутри неё
 
-            Текст/Данные для анализа:
-            ---
-            {file_content_for_gemini}
-            ---
-            """
-
-            # Используем analyze_with_gemini с адаптированным промптом и подготовленным содержимым
-            extracted_data = analyze_with_gemini(gemini_prompt_hierarchy)
+            # Используем analyze_content с адаптированным промптом и подготовленным содержимым
+            extracted_data = analyze_content(file_content_for_llm, client, current_llm_model)
 
             if extracted_data:
                 print("\n--- Результаты анализа (Таблица) ---")
@@ -177,7 +139,7 @@ def on_hierarchy_analyze_button_clicked(b):
                 display(HTML(csv_download_link))
 
             else:
-                print("Не удалось извлечь данные из файла с помощью Gemini. Проверьте содержимое файла и промпт.")
+                print("Не удалось извлечь данные из файла с помощью LLM. Проверьте содержимое файла и промпт.")
         except pd.errors.EmptyDataError:
             print(f"Ошибка: Файл '{file_name}' пуст или не содержит данных.")
         except pd.errors.ParserError as pe:
