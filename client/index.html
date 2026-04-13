@@ -5,8 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>DataProcessor System</title>
     
-    <script src="https://d3js.org/d3.v7.min.js"></script>
-
     <style>
         :root {
             --primary-color: #2563eb;
@@ -16,7 +14,6 @@
             --text-color: #374151;
             --border-color: #e5e7eb;
             --header-height: 60px;
-            --card-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
         }
 
         body {
@@ -25,7 +22,6 @@
             background-color: var(--bg-color); color: var(--text-color); overflow-x: hidden;
         }
 
-        /* --- Боковое меню --- */
         .sidebar {
             position: fixed; top: 0; left: -260px; width: 260px; height: 100%;
             background-color: var(--sidebar-bg); color: var(--sidebar-text);
@@ -47,7 +43,6 @@
         .overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.5); z-index: 900; }
         .overlay.active { display: block; }
 
-        /* --- Основной контент --- */
         .main-wrapper { display: flex; flex-direction: column; height: 100vh; }
         .top-bar {
             height: var(--header-height); background-color: white; display: flex; align-items: center;
@@ -59,7 +54,6 @@
         .tab-content.active { display: block; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
 
-        /* --- UI Компоненты --- */
         .upload-area {
             border: 2px dashed var(--border-color); padding: 2.5rem; text-align: center;
             border-radius: 12px; margin-bottom: 2rem; background: white; transition: border-color 0.2s;
@@ -74,31 +68,13 @@
         .btn:hover { background-color: #1d4ed8; transform: translateY(-1px); }
         .btn-outline { background-color: transparent; border: 1px solid var(--border-color); color: var(--text-color); }
         .btn-outline:hover { background-color: #f9fafb; border-color: #d1d5db; }
-        .btn-outline.active { background-color: var(--text-color); color: white; border-color: var(--text-color); }
         .controls { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; padding: 10px 0; border-bottom: 1px solid var(--border-color); }
 
-        /* --- Таблица --- */
-        .table-container { overflow-x: auto; border: 1px solid var(--border-color); border-radius: 8px; background: white; max-height: 600px; }
+        .table-container { overflow-x: auto; border: 1px solid var(--border-color); border-radius: 8px; background: white; max-height: 70vh; }
         table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
-        th, td { padding: 14px 16px; text-align: left; border-bottom: 1px solid var(--border-color); }
-        th { background-color: #f8fafc; font-weight: 600; color: #475569; position: sticky; top: 0; }
+        th, td { padding: 12px 16px; text-align: left; border-bottom: 1px solid var(--border-color); white-space: nowrap; }
+        th { background-color: #f8fafc; font-weight: 600; color: #475569; position: sticky; top: 0; z-index: 10; }
         tr:hover { background-color: #f1f5f9; }
-
-        /* --- D3 Tree Styles --- */
-        #d3-tree-container {
-            width: 100%; height: 600px; background-color: #ffffff; border: 1px solid var(--border-color);
-            border-radius: 8px; overflow: hidden; position: relative;
-        }
-        .node circle { fill: #fff; stroke: var(--primary-color); stroke-width: 2px; cursor: pointer; transition: all 0.3s; }
-        .node circle:hover { fill: var(--primary-color); stroke: #1e40af; }
-        .node text { font: 12px sans-serif; fill: #374151; }
-        .link { fill: none; stroke: #cbd5e1; stroke-width: 1.5px; }
-        .tooltip {
-            position: absolute; text-align: left; padding: 10px; font-size: 12px;
-            background: rgba(31, 41, 55, 0.95); color: #fff; border-radius: 6px;
-            pointer-events: none; opacity: 0; transition: opacity 0.2s; z-index: 10; max-width: 300px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.2);
-        }
 
         #status-message { margin-bottom: 1rem; padding: 12px; border-radius: 6px; display: none; }
         .success { background-color: #dcfce7; color: #166534; border: 1px solid #bbf7d0; }
@@ -128,7 +104,7 @@
     <main class="content-area">
         <div id="tab-hierarchy" class="tab-content active">
             <div class="upload-area">
-                <p style="margin-bottom: 15px; color: #64748b;">Загрузите Excel файл для построения иерархии</p>
+                <p style="margin-bottom: 15px; color: #64748b;">Загрузите Excel файл для просмотра данных</p>
                 <input type="file" id="fileInput" accept=".xlsx, .xls" />
                 <button class="btn" onclick="document.getElementById('fileInput').click()">Выбрать файл</button>
                 <button class="btn btn-outline" onclick="uploadFile()">Загрузить данные</button>
@@ -139,8 +115,7 @@
 
             <div id="data-controls" class="controls" style="display: none;">
                 <div class="view-toggles">
-                    <button class="btn btn-outline active" id="btn-view-table" onclick="switchView('table')">📄 Таблица</button>
-                    <button class="btn btn-outline" id="btn-view-tree" onclick="switchView('tree')">🌳 Дерево</button>
+                    <span style="font-weight: 500; color: #64748b;">Вид: Таблица</span>
                 </div>
                 <div class="export-toggles">
                     <button class="btn btn-outline" onclick="exportData('json')">Скачать JSON</button>
@@ -150,9 +125,6 @@
 
             <div id="data-viewer" style="display: none;">
                 <div id="view-table" class="table-container"></div>
-                <div id="view-tree" class="tree-container" style="display: none;">
-                    <div id="d3-tree-container"></div>
-                </div>
             </div>
         </div>
 
@@ -164,8 +136,6 @@
 <script>
     let globalData = [];
     let globalHeaders = [];
-    let svg, g, root, i = 0, duration = 750, treemap;
-    let tooltip;
 
     function toggleMenu() {
         document.getElementById('sidebar').classList.toggle('open');
@@ -189,12 +159,14 @@
     async function uploadFile() {
         const fileInput = document.getElementById('fileInput');
         if (!fileInput.files.length) return showStatus('Выберите файл.', 'error');
-        const formData = new FormData(); formData.append('file', fileInput.files[0]);
+        const formData = new FormData(); 
+        formData.append('file', fileInput.files[0]);
         showStatus('Обработка...', 'success');
 
         try {
             const res = await fetch('/uploadfile/', { method: 'POST', body: formData });
             const result = await res.json();
+            
             if (result.status === 'success') {
                 globalData = result.data;
                 if (globalData.length) {
@@ -203,229 +175,57 @@
                     renderTable();
                     document.getElementById('data-controls').style.display = 'flex';
                     document.getElementById('data-viewer').style.display = 'block';
-                } else showStatus('Файл пуст.', 'error');
-            } else showStatus(`Ошибка: ${result.message}`, 'error');
-        } catch (e) { showStatus('Ошибка сервера', 'error'); }
-    }
-
-    function switchView(view) {
-        const isTable = view === 'table';
-        document.getElementById('view-table').style.display = isTable ? 'block' : 'none';
-        document.getElementById('view-tree').style.display = isTable ? 'none' : 'block';
-        document.getElementById('btn-view-table').classList.toggle('active', isTable);
-        document.getElementById('btn-view-tree').classList.toggle('active', !isTable);
-        if (!isTable) renderTree();
+                } else {
+                    showStatus('Файл пуст.', 'error');
+                }
+            } else {
+                showStatus(`Ошибка: ${result.message}`, 'error');
+            }
+        } catch (e) { 
+            showStatus('Ошибка сервера', 'error'); 
+        }
     }
 
     function renderTable() {
-        const c = document.getElementById('view-table');
+        const container = document.getElementById('view-table');
         if (!globalData.length) return;
-        let h = '<table><thead><tr>' + globalHeaders.map(i => `<th>${i}</th>`).join('') + '</tr></thead><tbody>';
-        h += globalData.map(r => '<tr>' + globalHeaders.map(i => `<td>${r[i]||''}</td>`).join('') + '</tr>').join('');
-        c.innerHTML = h + '</tbody></table>';
-    }
+        
+        let html = '<table><thead><tr>';
+        globalHeaders.forEach(header => {
+            html += `<th>${header}</th>`;
+        });
+        html += '</tr></thead><tbody>';
 
-    // --- ГЕНЕРАЦИЯ ИЕРАРХИИ (НОВЫЙ АЛГОРИТМ) ---
-    function buildHierarchyRecursive(data, headers, depth = 0) {
-        if (depth >= headers.length) return []; // Конец ветки
-
-        const currentKey = headers[depth];
-        const groups = {};
-
-        // Группируем данные по текущему ключу
-        data.forEach(row => {
-            const val = row[currentKey] || "Пусто";
-            if (!groups[val]) groups[val] = [];
-            groups[val].push(row);
+        globalData.forEach(row => {
+            html += '<tr>';
+            globalHeaders.forEach(header => {
+                const val = row[header] !== undefined && row[header] !== null ? row[header] : '';
+                html += `<td>${val}</td>`;
+            });
+            html += '</tr>';
         });
 
-        // Строим детей
-        const children = [];
-        for (const [val, rows] of Object.entries(groups)) {
-            // Если это последний уровень, создаем лист
-            if (depth === headers.length - 1) {
-                children.push({
-                    name: val,
-                    // Сохраняем все строки, которые привели сюда (для тултипа)
-                    originalData: rows 
-                });
-            } else {
-                // Рекурсивно идем глубже
-                const deeperNodes = buildHierarchyRecursive(rows, headers, depth + 1);
-                if (deeperNodes.length > 0) {
-                    children.push({
-                        name: val,
-                        children: deeperNodes,
-                        // Если на этом уровне уникальных значений больше нет, но есть дети, храним данные для примера
-                        originalData: rows 
-                    });
-                }
-            }
-        }
-        return children;
-    }
-
-        function renderTree() {
-        const container = document.getElementById('d3-tree-container');
-        if (!container) return;
-        container.innerHTML = '';
-        
-        if (!globalData.length) return;
-
-        // --- НОВЫЙ БЛОК: ФИЛЬТРАЦИЯ ДАННЫХ ---
-        // 1. Проверяем, что все заголовки (колонки) существуют
-        if (globalHeaders.length === 0) return;
-
-        // 2. Фильтруем строки: берем только те, где ВСЕ значения заполнены
-        const filteredData = globalData.filter(row => {
-            // Проходим по каждой колонке
-            for (let i = 0; i < globalHeaders.length; i++) {
-                const header = globalHeaders[i];
-                const val = row[header];
-                
-                // Проверяем: если значение undefined, null, или пустая строка (с пробелами) -> false
-                if (val === undefined || val === null || (typeof val === 'string' && val.trim() === '')) {
-                    return false; 
-                }
-            }
-            return true; // Все проверки пройдены
-        });
-
-        // Сообщаем пользователю, если после фильтрации ничего не осталось
-        if (filteredData.length === 0) {
-            showStatus('Нет строк со всеми заполненными колонками для построения дерева.', 'error');
-            // Можно очистить старое дерево или не рисовать ничего
-            return;
-        }
-
-        console.log(`Всего строк: ${globalData.length}, Подходит для дерева: ${filteredData.length}`);
-
-        // 3. Строим иерархию ТОЛЬКО из отфильтрованных данных
-        const hierarchyData = {
-            name: "Root",
-            children: buildHierarchyRecursive(filteredData, globalHeaders)
-        };
-
-        if (!hierarchyData.children.length) {
-             showStatus('Дерево пустое (возможно, данные полностью идентичны).', 'error');
-             return;
-        }
-
-        // --- ДАЛЕЕ ИДЕТ СТАНДАРТНАЯ РИСОВКА D3 ---
-        const width = container.clientWidth;
-        const height = container.clientHeight;
-
-        tooltip = d3.select("#view-tree").append("div").attr("class", "tooltip");
-
-        treemap = d3.tree().size([height, width]);
-        
-        root = d3.hierarchy(hierarchyData, d => d.children);
-        root.x0 = height / 2;
-        root.y0 = 0;
-
-        svg = d3.select("#d3-tree-container").append("svg")
-            .attr("width", width).attr("height", height)
-            .call(d3.zoom().on("zoom", (event) => { g.attr("transform", event.transform); }))
-            .append("g");
-
-        g = svg.append("g").attr("transform", "translate(40,0)");
-        
-        // Сворачиваем все ветки кроме корня для аккуратности
-        if(root.children) {
-            root.children.forEach(collapse);
-        }
-
-        update(root);
-    }
-    
-    function update(source) {
-        const treeData = treemap(root);
-        const nodes = treeData.descendants();
-        const links = treeData.links();
-        nodes.forEach(d => { d.y = d.depth * 180; }); // Отступ между уровнями
-
-        const node = g.selectAll('g.node').data(nodes, d => d.id || (d.id = ++i));
-        const nodeEnter = node.enter().append('g').attr('class', 'node')
-            .attr("transform", d => `translate(${source.y0},${source.x0})`).on('click', click);
-
-        nodeEnter.append('circle').attr('class', 'node').attr('r', 1e-6)
-            .style("fill", d => d._children ? "#2563eb" : "#fff")
-            .on("mouseover", function(event, d) {
-                if (d.data.originalData) {
-                    // В originalData теперь может быть массив строк
-                    const rows = d.data.originalData;
-                    // Если это массив (листья или накопленные данные), покажем первую или все
-                    const sampleRow = Array.isArray(rows) ? rows[0] : rows;
-                    
-                    let content = `<strong>Узел: ${d.data.name}</strong><br/>`;
-                    content += `<em>Записей в ветке: ${Array.isArray(rows) ? rows.length : 1}</em><br/><hr/>`;
-                    
-                    // Показываем пример данных (первые 3 поля)
-                    let count = 0;
-                    for (const [key, value] of Object.entries(sampleRow)) {
-                        content += `<div><b>${key}:</b> ${value}</div>`;
-                        count++;
-                        if(count > 5) { content += `<div>...</div>`; break; }
-                    }
-                    
-                    tooltip.style("opacity", 1).html(content)
-                        .style("left", (event.pageX + 10) + "px").style("top", (event.pageY - 28) + "px");
-                }
-            }).on("mouseout", function() { tooltip.style("opacity", 0); });
-
-        nodeEnter.append('text').attr("dy", ".35em")
-            .attr("x", d => d.children || d._children ? -13 : 13)
-            .attr("text-anchor", d => d.children || d._children ? "end" : "start")
-            .text(d => d.data.name).style("fill-opacity", 1e-6);
-
-        const nodeUpdate = nodeEnter.merge(node);
-        nodeUpdate.transition().duration(duration).attr("transform", d => `translate(${d.y},${d.x})`);
-        nodeUpdate.select('circle.node').attr('r', 6).style("fill", d => d._children ? "#2563eb" : "#fff").attr('cursor', 'pointer');
-        nodeUpdate.select('text').style("fill-opacity", 1);
-
-        const nodeExit = node.exit().transition().duration(duration).attr("transform", d => `translate(${source.y},${source.x})`).remove();
-        nodeExit.select('circle').attr('r', 1e-6);
-        nodeExit.select('text').style("fill-opacity", 1e-6);
-
-        const link = g.selectAll('path.link').data(links, d => d.target.id);
-        const linkEnter = link.enter().insert('path', "g").attr("class", "link")
-            .attr('d', d => { const o = { x: source.x0, y: source.y0 }; return diagonal(o, o); });
-
-        const linkUpdate = linkEnter.merge(link);
-        linkUpdate.transition().duration(duration).attr('d', d => diagonal(d.source, d.target));
-
-        link.exit().transition().duration(duration).attr('d', d => { const o = { x: source.x, y: source.y }; return diagonal(o, o); }).remove();
-
-        nodes.forEach(d => { d.x0 = d.x; d.y0 = d.y; });
-    }
-
-    function diagonal(s, d) {
-        return `M ${s.y} ${s.x} C ${(s.y + d.y) / 2} ${s.x}, ${(s.y + d.y) / 2} ${d.x}, ${d.y} ${d.x}`;
-    }
-
-    function click(event, d) {
-        if (d.children) { d._children = d.children; d.children = null; } 
-        else { d.children = d._children; d._children = null; }
-        update(d);
-    }
-
-    function collapse(d) {
-        if (d.children) {
-            d._children = d.children;
-            d._children.forEach(collapse);
-            d.children = null;
-        }
+        html += '</tbody></table>';
+        container.innerHTML = html;
     }
 
     function exportData(fmt) {
         if (!globalData.length) return;
         let content, mime, ext;
         if (fmt === 'json') {
-            content = JSON.stringify(globalData, null, 2); mime = 'application/json'; ext = 'json';
+            content = JSON.stringify(globalData, null, 2); 
+            mime = 'application/json'; 
+            ext = 'json';
         } else {
             const h = globalHeaders.join(',') + '\n';
-            const r = globalData.map(row => globalHeaders.map(f => { let v = (row[f]||'').toString(); if (v.includes(',') || v.includes('"')) v = `"${v.replace(/"/g, '""')}"`; return v; }).join(',')).join('\n');
-            content = h + r; mime = 'text/csv'; ext = 'csv';
+            const r = globalData.map(row => globalHeaders.map(f => { 
+                let v = (row[f]||'').toString(); 
+                if (v.includes(',') || v.includes('"')) v = `"${v.replace(/"/g, '""')}"`; 
+                return v; 
+            }).join(',')).join('\n');
+            content = h + r; 
+            mime = 'text/csv'; 
+            ext = 'csv';
         }
         const a = document.createElement('a');
         a.href = URL.createObjectURL(new Blob([content], {type: mime}));
